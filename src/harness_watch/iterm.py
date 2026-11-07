@@ -66,12 +66,33 @@ def parse_sessions(output: str) -> dict[str, ItermSession]:
     return by_tty
 
 
+OSASCRIPT_TIMEOUT_S = 10.0
+
+
+class ItermTimeout(Exception):
+    pass
+
+
+def osascript(script: str, *args: str, bounded: bool = True) -> subprocess.CompletedProcess | None:
+    """Run AppleScript with `args` as its `on run argv`; None when it hangs. It does while macOS
+    asks whether this app may control iTerm2, and the session list would wait with it."""
+    try:
+        return subprocess.run(["osascript", "-e", script, *args], capture_output=True, text=True,
+                              timeout=OSASCRIPT_TIMEOUT_S if bounded else None)
+    except subprocess.TimeoutExpired:
+        log.warning("iTerm2 didn't answer in %.0f s: is macOS asking whether harness-watch may control it?",
+                    OSASCRIPT_TIMEOUT_S)
+        return None
+
+
 def list_sessions(running: bool) -> dict[str, ItermSession]:
     """iTerm2 sessions keyed by tty; empty when iTerm2 is not running or scripting fails."""
     # `tell application "iTerm2"` would launch iTerm2, so callers check first.
     if not running:
         return {}
-    result = subprocess.run(["osascript", "-e", _LIST_SCRIPT], capture_output=True, text=True)
+    result = osascript(_LIST_SCRIPT)
+    if result is None:
+        raise ItermTimeout
     if result.returncode != 0:
         return {}
     return parse_sessions(result.stdout)
@@ -85,13 +106,15 @@ class ItermCache:
     renamed tabs and moved panes.
     """
 
-    def __init__(self, fetch=list_sessions, max_age_s: float = 15.0, clock=time.monotonic):
+    def __init__(self, fetch=list_sessions, max_age_s: float = 15.0, clock=time.monotonic, backoff_s: float = 60.0):
+        self.backoff_s = backoff_s
         self._fetch = fetch
         self._clock = clock
         self.max_age_s = max_age_s
         self._by_tty: dict[str, ItermSession] = {}
         self._covered: set[tuple[int, str]] = set()
         self._at: float | None = None
+        self._quiet_until = 0.0
 
     def get(self, running: bool, sessions: set[tuple[int, str]]) -> dict[str, ItermSession]:
         """`sessions` is the (pid, tty) pairs of the live Claude Code processes."""
@@ -100,11 +123,17 @@ class ItermCache:
             self._by_tty = {}
             return {}
         now = self._clock()
+        if now < self._quiet_until:
+            return self._by_tty
         stale = self._at is None or now - self._at >= self.max_age_s
         if stale or not sessions <= self._covered:
-            self._by_tty = self._fetch(True)
+            try:
+                self._by_tty = self._fetch(True)
+            except ItermTimeout:  # a permission dialog, likely: ask again in a while, not on every poll
+                self._quiet_until = self._clock() + self.backoff_s
+                return self._by_tty
             self._covered = set(sessions)
-            self._at = now
+            self._at = self._clock()  # after the lookup, which can take seconds
         return self._by_tty
 
 
@@ -170,7 +199,10 @@ def _original_color(session_id: str) -> list[int] | None:
     except (OSError, ValueError):
         colors = {}
     if session_id not in colors:
-        out = subprocess.run(["osascript", "-e", _PANE_SCRIPT, session_id], capture_output=True, text=True).stdout
+        result = osascript(_PANE_SCRIPT, session_id)
+        if result is None:
+            return None
+        out = result.stdout
         try:
             colors[session_id] = [int(v) for v in out.split(",")]
         except ValueError:
@@ -187,17 +219,15 @@ def flash(session_id: str) -> None:
     """Flash a pane's background once so the eye finds it (macOS has no "highlight this window")."""
     color = _original_color(session_id)
     if color:
-        subprocess.run(["osascript", "-e", _PANE_SCRIPT, session_id, *map(str, color)], capture_output=True)
+        osascript(_PANE_SCRIPT, session_id, *map(str, color), bounded=False)  # never cut short: it restores the color last
 
 
 def focus(session_id: str) -> bool:
     """Bring the iTerm2 window/tab/pane holding `session_id` to the front, then flash that pane
     so it is obvious which one it is (macOS has no "highlight this window" of its own)."""
     # The id goes in as an argument, never spliced into the script source.
-    result = subprocess.run(
-        ["osascript", "-e", _FOCUS_SCRIPT, session_id], capture_output=True, text=True
-    )
-    ok = result.returncode == 0 and result.stdout.strip() == "ok"
+    result = osascript(_FOCUS_SCRIPT, session_id)
+    ok = result is not None and result.returncode == 0 and result.stdout.strip() == "ok"
     if ok:  # in the background: the page gets its answer without waiting for the pulses
         threading.Thread(target=flash, args=(session_id,), daemon=True).start()
     return ok
@@ -279,8 +309,7 @@ def fork(cwd: str, session_id: str, name: str | None, window_id: int | None = No
 def open_tab(command: str, window_id: int | None = None) -> bool:
     """A new iTerm2 tab whose process is `command`."""
     # The command goes in as an argument, never spliced into the script source.
-    result = subprocess.run(["osascript", "-e", _FORK_SCRIPT, command, "" if window_id is None else str(window_id)],
-                            capture_output=True, text=True)
-    if result.returncode != 0:
+    result = osascript(_FORK_SCRIPT, command, "" if window_id is None else str(window_id))
+    if result is not None and result.returncode != 0:
         log.warning("iTerm2 could not open a tab: %s", result.stderr.strip())
-    return result.returncode == 0 and result.stdout.strip() == "ok"
+    return result is not None and result.returncode == 0 and result.stdout.strip() == "ok"

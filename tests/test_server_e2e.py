@@ -531,3 +531,26 @@ def test_open_never_follows_a_redirect_to_the_real_server(claude_home):
             server._get(f"http://127.0.0.1:{srv.server_port}/__proof?n=x")
     finally:
         srv.shutdown()
+
+
+def test_a_pending_iterm_permission_dialog_does_not_hang_the_session_list(claude_home, live_proc, tmp_path, monkeypatch):
+    """While macOS asks whether harness-watch may control iTerm2, osascript doesn't return. The
+    session list ran it holding its lock, so every request hung until the server restarted."""
+    from harness_watch import iterm, registry
+
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    (bin_dir / "osascript").write_text("#!/bin/sh\nexec sleep 60\n")  # the dialog, never answered
+    (bin_dir / "osascript").chmod(0o755)
+    monkeypatch.setenv("PATH", f"{bin_dir}:{os.environ['PATH']}")
+    monkeypatch.setattr(iterm, "OSASCRIPT_TIMEOUT_S", 1.0)
+    monkeypatch.setattr(iterm, "is_running", lambda comms: True)  # as when iTerm2 is open
+    monkeypatch.setattr(registry, "_iterm_cache", iterm.ItermCache())
+    register(claude_home, live_proc.pid)
+
+    c = client()
+    for _ in range(2):  # the second request too: nothing is left holding the lock
+        t0 = time.time()
+        sessions = c.get("/api/sessions").json()["sessions"]
+        assert time.time() - t0 < 5
+        assert [s["name"] for s in sessions] == ["demo-session"] and not sessions[0]["in_iterm"]

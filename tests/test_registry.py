@@ -162,6 +162,28 @@ def test_iterm_cache_refetches_only_when_needed():
     assert len(calls) == 5
 
 
+def test_iterm_cache_waits_a_minute_after_a_lookup_timed_out():
+    """A pending "may control iTerm2?" dialog: each lookup waits out its timeout holding the session
+    list's lock, so the next one waits a minute instead of the next poll."""
+    calls, answer = [], [iterm.ItermTimeout]
+
+    def fetch(running):
+        calls.append(1)
+        if answer[0] is iterm.ItermTimeout:
+            raise iterm.ItermTimeout
+        return answer[0]
+
+    clock = FakeClock()
+    cache = iterm.ItermCache(fetch, max_age_s=15, clock=clock, backoff_s=60)
+    assert cache.get(True, {(10, "ttys001")}) == {}
+    clock.t = 30
+    cache.get(True, {(11, "ttys002")})  # even a new session waits
+    assert len(calls) == 1
+    clock.t = 61
+    answer[0] = {"ttys001": iterm.ItermSession(1, 1, "U", "ttys001", "n")}  # allowed meanwhile
+    assert "ttys001" in cache.get(True, {(10, "ttys001")}) and len(calls) == 2
+
+
 def test_flash_restores_the_color_the_pane_had_first(tmp_path, monkeypatch):
     """iTerm2 loses a unit per color read/write: re-reading before each flash would darken the pane."""
     calls = []
