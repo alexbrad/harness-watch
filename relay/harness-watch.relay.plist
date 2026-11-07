@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Serves harness-watch on port 80 of 127.0.0.2, for a name without a port (/etc/hosts:
+     127.0.0.2 <name>). Runs relay.py as root at boot: it adds 127.0.0.2 to loopback, listens on its port 80 (only root may), then drops to
+     nobody and relays to harness-watch on 127.0.0.1:8787. Port 80 of 127.0.0.1 stays free.
+     The script is copied to a root-owned path: root must not run a file the user can edit.
+     Install: see the README. -->
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>harness-watch.relay</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/usr/bin/python3</string>
+    <string>/Library/PrivilegedHelperTools/harness-watch-relay.py</string>
+  </array>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>StandardOutPath</key><string>/var/log/harness-watch-relay.log</string>
+  <key>StandardErrorPath</key><string>/var/log/harness-watch-relay.log</string>
+</dict>
+</plist>

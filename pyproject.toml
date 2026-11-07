@@ -1,0 +1,28 @@
+[project]
+name = "harness-watch"
+version = "0.1.0"
+description = "A live local dashboard of your coding-agent sessions (Claude Code for now) on macOS"
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Alex Brad", email = "alex@mycelium.tech" }]
+requires-python = ">=3.12"
+classifiers = ["Operating System :: MacOS", "Programming Language :: Python :: 3"]
+dependencies = ["fastapi>=0.115", "uvicorn>=0.30"]
+
+[project.urls]
+Homepage = "https://github.com/alexbrad/harness-watch"
+
+[project.scripts]
+harness-watch = "harness_watch.server:main"
+harness-watch-statusline = "harness_watch.statusline:main"
+
+[dependency-groups]
+dev = ["pytest>=8", "httpx>=0.27"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Claude Sessions</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header>
+    <h1>Claude sessions</h1>
+    <nav class="tabs" id="tabs">
+      <button data-view="live">Running</button>
+      <button data-view="all">All sessions</button>
+    </nav>
+    <div class="summary" id="summary"></div>
+    <div class="conn" id="conn" title="Live connection to the dashboard server"></div>
+  </header>
+  <section class="usage" id="usage" aria-label="Plan usage" hidden></section>
+  <div class="layout">
+    <main>
+      <div id="live-view">
+      <table id="sessions">
+        <thead>
+          <tr>
+            <th class="col-focus" aria-label="Focus"></th>
+            <th class="col-status">Status</th>
+            <th class="col-reply" title="Time since Claude last responded, in the main session or a sub-agent">Last reply</th>
+            <th>Session</th>
+            <th>Directory</th>
+            <th class="col-account">Account</th>
+            <th class="col-context">Context</th>
+            <th class="col-num">Tokens</th>
+            <th class="col-num">Uptime</th>
+            <th>Model</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+      <p class="empty" id="empty" hidden>No Claude Code sessions running.</p>
+      </div>
+      <div id="all-view" hidden>
+        <div class="search-bar">
+          <input type="search" id="search" placeholder="Search by name or directory  ( / )" autocomplete="off" spellcheck="false">
+          <span class="muted" id="search-count"></span>
+        </div>
+        <p class="indexing" id="indexing" hidden></p>
+        <table id="history">
+          <thead>
+            <tr>
+              <th class="col-when">Last active</th>
+              <th>Session</th>
+              <th>Directory</th>
+              <th class="col-num">Duration</th>
+              <th class="col-num">Tokens</th>
+              <th>Model</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+        <div class="pager" id="pager"></div>
+      </div>
+    </main>
+  </div>
+  <div class="overlay" id="overlay" hidden>
+    <aside id="detail" role="dialog" aria-modal="true"></aside>
+  </div>
+  <div class="toast" id="toast" role="status"></div>
+  <script src="app.js"></script>
+</body>
+</html>
